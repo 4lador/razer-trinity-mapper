@@ -2,6 +2,10 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
+> **Scope**: this tool is built specifically for the Razer Naga Trinity
+> and supports that mouse only. For other devices, consider
+> [input-remapper](https://github.com/sezanzeb/input-remapper).
+
 Fast, native remapper for the **12 side buttons** of the Razer Naga Trinity
 on Linux.
 
