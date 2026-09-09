@@ -1,0 +1,2 @@
+# razer-trinity-mapper — uinput access
+KERNEL=="uinput", GROUP="uinput", MODE="0660"

@@ -1,0 +1,35 @@
+# Maintainer: 4lador
+pkgname=razer-trinity-mapper
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Fast, native remapper for the Razer Naga Trinity's 12 side buttons on Linux"
+arch=('x86_64')
+url="https://github.com/4lador/razer-trinity-mapper"
+license=('GPL-3.0-or-later')
+depends=('gcc-libs' 'libxkbcommon')
+makedepends=('cargo')
+source=("$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+    cd "$pkgname-$pkgver"
+    cargo fetch --locked --target "$CARCH-unknown-linux-gnu"
+}
+
+build() {
+    cd "$pkgname-$pkgver"
+    cargo build --release --frozen
+}
+
+package() {
+    cd "$pkgname-$pkgver"
+    install -Dm755 target/release/trinity-daemon "$pkgdir/usr/bin/trinity-daemon"
+    install -Dm755 target/release/trinity-gui "$pkgdir/usr/bin/trinity-gui"
+    install -Dm644 packaging/60-trinity-mapper.rules \
+        "$pkgdir/usr/lib/udev/rules.d/60-trinity-mapper.rules"
+    sed -i 's|%h/.local/bin/trinity-daemon|/usr/bin/trinity-daemon|' \
+        packaging/trinity-mapper.service
+    install -Dm644 packaging/trinity-mapper.service \
+        "$pkgdir/usr/lib/systemd/user/trinity-mapper.service"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

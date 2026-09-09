@@ -1,0 +1,15 @@
+[package]
+name = "trinity-app"
+description = "Ports, use cases and shared IPC protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+trinity-core = { path = "../trinity-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints]
+workspace = true
