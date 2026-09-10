@@ -78,15 +78,21 @@ enum Message {
     KeyPressed(Key, Modifiers),
     StartCalibration,
     CancelCalibration,
-    NewProfileName(String),
-    CreateProfile,
     Refresh,
     ToggleSettings,
     SelectLocale(String),
-    CopyProjectUrl,
+    OpenProjectUrl,
     CopyShortcut(String),
     RequestDeleteProfile(String),
-    ProfileHover(Option<String>),
+    ShowManageProfiles,
+    HideManageProfiles,
+    Noop,
+    StartRename(String),
+    RenameInput(String),
+    ConfirmRename,
+    CancelRenameAction,
+    ManageProfileInput(String),
+    ManageAddProfile,
     ConfirmDeleteProfile,
     CancelDeleteProfile,
 }
@@ -106,7 +112,6 @@ struct App {
     profiles: Vec<String>,
     loaded_profile: Option<ProfileDto>,
     editing: Option<u8>,
-    new_profile: String,
     notice: Option<Notice>,
     finishing_calibration: bool,
     layout: KeyboardLayout,
@@ -118,7 +123,10 @@ struct App {
     route: Route,
     settings: settings::GuiSettings,
     confirm_delete: Option<String>,
-    hovered_profile: Option<String>,
+    manage_open: bool,
+    manage_input: String,
+    rename_from: Option<String>,
+    rename_input: String,
 }
 
 impl App {
@@ -131,7 +139,6 @@ impl App {
             profiles: Vec::new(),
             loaded_profile: None,
             editing: None,
-            new_profile: String::new(),
             notice: None,
             finishing_calibration: false,
             layout: KeyboardLayout::load().unwrap_or_default(),
@@ -143,7 +150,10 @@ impl App {
             route: Route::Main,
             settings: settings::GuiSettings::load(),
             confirm_delete: None,
-            hovered_profile: None,
+            manage_open: false,
+            manage_input: String::new(),
+            rename_from: None,
+            rename_input: String::new(),
         };
         rust_i18n::set_locale(app.settings.effective_locale().as_str());
         app
@@ -240,6 +250,14 @@ impl App {
             }
             Message::KeyPressed(key, modifiers) => {
                 if matches!(key, Key::Named(iced::keyboard::key::Named::Escape)) {
+                    if self.rename_from.is_some() {
+                        self.rename_from = None;
+                        return Task::none();
+                    }
+                    if self.manage_open {
+                        self.manage_open = false;
+                        return Task::none();
+                    }
                     if self.confirm_delete.is_some() {
                         self.confirm_delete = None;
                         return Task::none();
@@ -266,26 +284,6 @@ impl App {
                 self.finishing_calibration = false;
                 self.send(Request::CancelCalibration)
             }
-            Message::NewProfileName(name) => {
-                self.new_profile = name;
-                Task::none()
-            }
-            Message::CreateProfile => {
-                let name = self.new_profile.trim().to_owned();
-                if name.is_empty() {
-                    return Task::none();
-                }
-                self.new_profile.clear();
-                let profile = ProfileDto {
-                    name,
-                    buttons: Vec::new(),
-                };
-                Task::batch([
-                    self.send(Request::SaveProfile { profile }),
-                    self.send(Request::GetStatus),
-                    self.send(Request::ListProfiles),
-                ])
-            }
             Message::Refresh => self.refresh_all(),
             Message::ToggleSettings => {
                 self.route = match self.route {
@@ -294,14 +292,13 @@ impl App {
                 };
                 Task::none()
             }
-            Message::CopyProjectUrl => {
-                iced::clipboard::write(crate::settings::PROJECT_URL.to_owned())
-            }
-            Message::CopyShortcut(command) => iced::clipboard::write(command),
-            Message::ProfileHover(name) => {
-                self.hovered_profile = name;
+            Message::OpenProjectUrl => {
+                let _ = std::process::Command::new("xdg-open")
+                    .arg(crate::settings::PROJECT_URL)
+                    .spawn();
                 Task::none()
             }
+            Message::CopyShortcut(command) => iced::clipboard::write(command),
             Message::RequestDeleteProfile(name) => {
                 self.confirm_delete = Some(name);
                 Task::none()
@@ -319,6 +316,72 @@ impl App {
             Message::CancelDeleteProfile => {
                 self.confirm_delete = None;
                 Task::none()
+            }
+            Message::ShowManageProfiles => {
+                self.manage_open = true;
+                self.manage_input.clear();
+                self.rename_from = None;
+                self.rename_input.clear();
+                Task::none()
+            }
+            Message::HideManageProfiles => {
+                self.manage_open = false;
+                self.confirm_delete = None;
+                Task::none()
+            }
+            Message::Noop => Task::none(),
+            Message::StartRename(name) => {
+                self.rename_input = name.clone();
+                self.rename_from = Some(name);
+                Task::none()
+            }
+            Message::RenameInput(value) => {
+                self.rename_input = value;
+                Task::none()
+            }
+            Message::CancelRenameAction => {
+                self.rename_from = None;
+                self.rename_input.clear();
+                Task::none()
+            }
+            Message::ConfirmRename => {
+                let Some(from) = self.rename_from.take() else {
+                    return Task::none();
+                };
+                let to = self.rename_input.trim().to_owned();
+                self.rename_input.clear();
+                if to.is_empty() || to == from {
+                    return Task::none();
+                }
+                // RenameProfile already switches the active profile
+                // daemon-side — no need for a separate SetProfile.
+                Task::batch([
+                    self.send(Request::RenameProfile { from, to }),
+                    self.send(Request::ListProfiles),
+                    self.send(Request::GetStatus),
+                ])
+            }
+            Message::ManageProfileInput(value) => {
+                self.manage_input = value;
+                Task::none()
+            }
+            Message::ManageAddProfile => {
+                let name = self.manage_input.trim().to_owned();
+                if name.is_empty() {
+                    return Task::none();
+                }
+                self.manage_input.clear();
+                let profile = ProfileDto {
+                    name,
+                    buttons: Vec::new(),
+                };
+                let created = profile.name.clone();
+                Task::batch([
+                    self.send(Request::SaveProfile { profile }),
+                    self.send(Request::SetProfile { name: created }),
+                    self.send(Request::ListProfiles),
+                    self.send(Request::GetStatus),
+                ])
             }
             Message::SelectLocale(locale) => {
                 if settings::LOCALES.contains(&locale.as_str()) {
@@ -350,6 +413,14 @@ impl App {
                 }
                 if previous_profile != status.profile {
                     tasks.push(self.refresh_all());
+                }
+                // Auto-start calibration on very first launch if not calibrated
+                if previous_profile.is_none()
+                    && self.status.as_ref().is_none()
+                    && !status.calibrated
+                    && !status.calibrating
+                {
+                    tasks.push(self.send(Request::BeginCalibration));
                 }
                 Task::batch(tasks)
             }
@@ -526,5 +597,51 @@ mod tests {
         assert_eq!(layout_for(1080.0), WindowLayout::Wide);
         assert_eq!(layout_for(NARROW_BREAKPOINT - 0.1), WindowLayout::Narrow);
         assert_eq!(layout_for(MIN_WINDOW_WIDTH), WindowLayout::Narrow);
+    }
+}
+
+#[cfg(test)]
+mod responsive_tests {
+    use crate::view::responsive_sizes;
+
+    #[test]
+    fn grid_max_respects_bounds() {
+        // Below window minimum — clamped to 420
+        let tiny = responsive_sizes(600.0);
+        assert_eq!(tiny.grid_max, 420.0);
+
+        // Default window 880px → 528
+        let normal = responsive_sizes(880.0);
+        assert!((normal.grid_max - 528.0).abs() < 0.1);
+
+        // Half-screen 1080p (960px) → 576
+        let half = responsive_sizes(960.0);
+        assert!((half.grid_max - 576.0).abs() < 0.1);
+
+        // Fullscreen 1080p — capped at 700
+        let full = responsive_sizes(1920.0);
+        assert_eq!(full.grid_max, 700.0);
+
+        // 4K — same cap
+        let uhd = responsive_sizes(2560.0);
+        assert_eq!(uhd.grid_max, 700.0);
+    }
+
+    #[test]
+    fn cell_height_maintains_aspect_ratio() {
+        for width in [700.0, 880.0, 960.0, 1920.0] {
+            let sizes = responsive_sizes(width);
+            let ratio = sizes.cell_height / ((sizes.grid_max - 2.0 * sizes.grid_spacing) / 3.0);
+            assert!((ratio - 0.6).abs() < 0.01, "ratio {ratio} at width {width}");
+        }
+    }
+
+    #[test]
+    fn spacing_scales_proportionally() {
+        let small = responsive_sizes(700.0);
+        let large = responsive_sizes(1920.0);
+        assert!(large.grid_spacing > small.grid_spacing);
+        assert!(large.toolbar_spacing > small.toolbar_spacing);
+        assert!(large.cell_height > small.cell_height);
     }
 }

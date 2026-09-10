@@ -13,6 +13,7 @@ pub enum Request {
     SaveProfile { profile: ProfileDto },
     SetProfile { name: String },
     DeleteProfile { name: String },
+    RenameProfile { from: String, to: String },
     BeginCalibration,
     CancelCalibration,
     FinishCalibration,
@@ -43,6 +44,8 @@ pub struct Status {
     pub captured_count: usize,
     pub total_buttons: usize,
     pub error: Option<String>,
+    /// When the error occurred, pre-formatted as `YYYY-MM-DD HH:MM:SS`.
+    pub error_at: Option<String>,
 }
 
 /// IPC-serializable profile (domain types do not depend on serde).
@@ -101,6 +104,10 @@ mod tests {
                     }],
                 },
             },
+            Request::RenameProfile {
+                from: "mmo".into(),
+                to: "mmo2".into(),
+            },
             Request::BeginCalibration,
             Request::CancelCalibration,
             Request::FinishCalibration,
@@ -136,6 +143,7 @@ mod tests {
             captured_count: 2,
             total_buttons: 12,
             error: None,
+            error_at: None,
         };
         let response = Response::Status(status);
         let json = encode_response(&response);

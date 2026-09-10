@@ -16,7 +16,6 @@ pub enum MouseAction {
 const LEFT: &str = include_str!("../assets/icons/mouse-left.svg");
 const RIGHT: &str = include_str!("../assets/icons/mouse-right.svg");
 const COPY: &str = include_str!("../assets/icons/copy.svg");
-const TRASH: &str = include_str!("../assets/icons/trash.svg");
 
 fn hex(color: Color) -> String {
     let channel = |value: f32| (value * 255.0).round() as u8;
@@ -54,15 +53,6 @@ pub fn mouse_icon(action: MouseAction, color: Color, size: f32) -> Element<'stat
 /// Ready-to-use copy icon widget (Lucide-style overlapping rectangles).
 pub fn copy_icon(color: Color, size: f32) -> Element<'static, Message> {
     let handle = Handle::from_memory(tint_svg(COPY, color));
-    svg::Svg::new(handle)
-        .width(Length::Fixed(size))
-        .height(Length::Fixed(size))
-        .into()
-}
-
-/// Ready-to-use trash icon widget (Lucide-style trash bin).
-pub fn trash_icon(color: Color, size: f32) -> Element<'static, Message> {
-    let handle = Handle::from_memory(tint_svg(TRASH, color));
     svg::Svg::new(handle)
         .width(Length::Fixed(size))
         .height(Length::Fixed(size))

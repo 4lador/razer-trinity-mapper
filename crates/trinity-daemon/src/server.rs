@@ -14,7 +14,6 @@ use trinity_core::calibration::Calibration;
 use trinity_core::error::DomainError;
 use trinity_core::key::KeyCode;
 use trinity_core::node::NodeId;
-use trinity_core::profile::Profile;
 use trinity_infra::{
     ByIdLocator, EvdevSource, TomlCalibrationRepository, TomlProfileRepository, UinputSink,
     node_caps,
@@ -81,26 +80,64 @@ struct EngineState {
     profile_name: Option<String>,
     calibration: Option<Calibration>,
     error: Option<String>,
+    error_at: Option<String>,
     calibration_log: usize,
+}
+
+/// Formats the current time as `YYYY-MM-DD HH:MM:SS` (no external deps).
+fn timestamp_now() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let days = secs / 86_400;
+    let time = secs % 86_400;
+    let (h, m, s) = (time / 3600, (time % 3600) / 60, time % 60);
+    // Civil-from-days algorithm (Howard Hinnant)
+    let z = days as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let mth = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if mth <= 2 { y + 1 } else { y };
+    format!("{y:04}-{mth:02}-{d:02} {h:02}:{m:02}:{s:02}")
+}
+
+fn set_error(state: &mut EngineState, message: impl Into<String>) {
+    state.error = Some(message.into());
+    state.error_at = Some(timestamp_now());
+}
+
+fn clear_error(state: &mut EngineState) {
+    state.error = None;
+    state.error_at = None;
 }
 
 /// Daemon: remapping engine + JSON-lines IPC server.
 pub struct Server {
     config: ServerConfig,
+    container: crate::container::Container,
     state: Arc<Mutex<EngineState>>,
     shutdown: Arc<AtomicBool>,
 }
 
 impl Server {
     pub fn new(config: ServerConfig) -> Self {
+        let container = crate::container::Container::new(&config);
         Self {
             config,
+            container,
             state: Arc::new(Mutex::new(EngineState {
                 engine: Engine::new(EvdevSource::new(), UinputSink::new()),
                 suspended: false,
                 profile_name: None,
                 calibration: None,
                 error: None,
+                error_at: None,
                 calibration_log: 0,
             })),
             shutdown: Arc::new(AtomicBool::new(false)),
@@ -153,17 +190,12 @@ impl Server {
         Ok(())
     }
 
-    fn bootstrap(&self) -> Result<(), AppError> {
-        let mut profiles = TomlProfileRepository::new(&self.config.profiles_dir);
-        if profiles.list().unwrap_or_default().is_empty() {
-            let default = Profile::new(&self.config.default_profile)?;
-            profiles.save(&default)?;
-        }
+    /// Initializes state (default profile, calibration) — public for tests.
+    pub fn bootstrap(&self) -> Result<(), AppError> {
+        let mut profiles = self.container.profile_use_case();
+        profiles.ensure_default()?;
         let calibration = TomlCalibrationRepository::new(&self.config.calibration_path).load()?;
-        let profile = profiles
-            .load(&self.config.default_profile)
-            .ok()
-            .or_else(|| Profile::new(&self.config.default_profile).ok());
+        let profile = profiles.load(&self.config.default_profile).ok();
 
         let mut state = self.lock_state();
         state.calibration = calibration;
@@ -171,14 +203,12 @@ impl Server {
         if let Some(profile) = profile {
             let _ = state.engine.set_profile(profile);
         }
-        if state.calibration.is_some() {
-            if let Some(calibration) = state.calibration.clone() {
-                let _ = state.engine.set_calibration(calibration);
-            }
+        if let Some(calibration) = state.calibration.clone() {
+            let _ = state.engine.set_calibration(calibration);
         }
         if let Err(err) = self.try_enable(&mut state) {
             eprintln!("trinity-daemon: engine not started: {err}");
-            state.error = Some(err.to_string());
+            set_error(&mut state, err.to_string());
         }
         Ok(())
     }
@@ -226,12 +256,14 @@ impl Server {
         false
     }
 
-    fn handle_request(&self, request: Request) -> Response {
+    /// Handles a single IPC request — public for integration tests.
+    pub fn handle_request(&self, request: Request) -> Response {
         let result = match request {
             Request::GetStatus => return self.build_status(),
             Request::SetEnabled { enabled } => self.set_enabled(enabled),
             Request::SetProfile { name } => self.set_profile(&name),
             Request::DeleteProfile { name } => self.delete_profile(&name),
+            Request::RenameProfile { from, to } => self.rename_profile(&from, &to),
             Request::ListProfiles => {
                 let profiles = TomlProfileRepository::new(&self.config.profiles_dir);
                 return match profiles.list() {
@@ -265,7 +297,7 @@ impl Server {
             Ok(()) => Response::Ok,
             Err(err) => {
                 let mut state = self.lock_state();
-                state.error = Some(err.to_string());
+                set_error(&mut state, err.to_string());
                 Response::Error {
                     message: err.to_string(),
                 }
@@ -303,31 +335,39 @@ impl Server {
         Ok(())
     }
 
-    fn delete_profile(&self, name: &str) -> Result<(), AppError> {
-        if name == self.config.default_profile {
-            return Err(AppError::Port("cannot delete the default profile".into()));
+    fn rename_profile(&self, from: &str, to: &str) -> Result<(), AppError> {
+        let mut profiles = self.container.profile_use_case();
+        let renamed = profiles.rename(from, to)?;
+        let mut state = self.lock_state();
+        if state.profile_name.as_deref() == Some(from) {
+            state.engine.set_profile(renamed)?;
+            state.profile_name = Some(to.to_owned());
         }
-        TomlProfileRepository::new(&self.config.profiles_dir).delete(name)?;
+        Ok(())
+    }
+
+    fn delete_profile(&self, name: &str) -> Result<(), AppError> {
+        let mut profiles = self.container.profile_use_case();
+        profiles.delete(name)?;
         let mut state = self.lock_state();
         if state.profile_name.as_deref() == Some(name) {
-            if let Ok(default) = TomlProfileRepository::new(&self.config.profiles_dir)
-                .load(&self.config.default_profile)
-            {
-                state.engine.set_profile(default)?;
-                state.profile_name = Some(self.config.default_profile.clone());
-            }
+            let default = profiles.load(&self.config.default_profile)?;
+            state.engine.set_profile(default)?;
+            state.profile_name = Some(self.config.default_profile.clone());
         }
         Ok(())
     }
 
     fn load_profile_dto(&self, name: &str) -> Result<ProfileDto, AppError> {
-        let profile = TomlProfileRepository::new(&self.config.profiles_dir).load(name)?;
+        let profiles = self.container.profile_use_case();
+        let profile = profiles.load(name)?;
         trinity_infra::profile_to_dto(&profile)
     }
 
     fn save_profile_dto(&self, dto: ProfileDto) -> Result<(), AppError> {
         let profile = trinity_infra::profile_from_dto(&dto)?;
-        TomlProfileRepository::new(&self.config.profiles_dir).save(&profile)?;
+        let mut profiles = self.container.profile_use_case();
+        profiles.save(&profile)?;
         let mut state = self.lock_state();
         if state.profile_name.as_deref() == Some(profile.name()) {
             state.engine.set_profile(profile)?;
@@ -347,6 +387,7 @@ impl Server {
         if state.engine.is_active() {
             state.suspended = false;
             state.engine.resume_translation()?;
+            clear_error(state);
             return Ok(());
         }
         let nodes = ByIdLocator::new(&self.config.device_prefix).locate()?;
@@ -362,7 +403,7 @@ impl Server {
         }
         state.engine.resume_translation()?;
         state.suspended = false;
-        state.error = None;
+        clear_error(state);
         Ok(())
     }
 
@@ -388,6 +429,7 @@ impl Server {
             captured_count,
             total_buttons: 12,
             error: state.error.clone(),
+            error_at: state.error_at.clone(),
         })
     }
 
@@ -420,12 +462,15 @@ fn engine_loop(state: Arc<Mutex<EngineState>>, shutdown: Arc<AtomicBool>) {
                 // contain an otherwise invisible successful capture.
                 log_new_captures(&mut guard);
                 guard.engine.cancel_calibration();
-                guard.error = Some(format!(
-                    "calibration conflict: code {code} on {node} is emitted by both button {first} and button {second}"
-                ));
+                set_error(
+                    &mut guard,
+                    format!(
+                        "calibration conflict: code {code} on {node} is emitted by both button {first} and button {second}"
+                    ),
+                );
             }
             Err(err) => {
-                guard.error = Some(err.to_string());
+                set_error(&mut guard, err.to_string());
                 drop(guard);
                 std::thread::sleep(ERROR_SLEEP);
                 continue;
