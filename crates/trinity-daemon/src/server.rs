@@ -14,7 +14,6 @@ use trinity_core::calibration::Calibration;
 use trinity_core::error::DomainError;
 use trinity_core::key::KeyCode;
 use trinity_core::node::NodeId;
-use trinity_core::profile::Profile;
 use trinity_infra::{
     ByIdLocator, EvdevSource, TomlCalibrationRepository, TomlProfileRepository, UinputSink,
     node_caps,
@@ -87,14 +86,17 @@ struct EngineState {
 /// Daemon: remapping engine + JSON-lines IPC server.
 pub struct Server {
     config: ServerConfig,
+    container: crate::container::Container,
     state: Arc<Mutex<EngineState>>,
     shutdown: Arc<AtomicBool>,
 }
 
 impl Server {
     pub fn new(config: ServerConfig) -> Self {
+        let container = crate::container::Container::new(&config);
         Self {
             config,
+            container,
             state: Arc::new(Mutex::new(EngineState {
                 engine: Engine::new(EvdevSource::new(), UinputSink::new()),
                 suspended: false,
@@ -155,16 +157,10 @@ impl Server {
 
     /// Initializes state (default profile, calibration) — public for tests.
     pub fn bootstrap(&self) -> Result<(), AppError> {
-        let mut profiles = TomlProfileRepository::new(&self.config.profiles_dir);
-        if profiles.list().unwrap_or_default().is_empty() {
-            let default = Profile::new(&self.config.default_profile)?;
-            profiles.save(&default)?;
-        }
+        let mut profiles = self.container.profile_use_case();
+        profiles.ensure_default()?;
         let calibration = TomlCalibrationRepository::new(&self.config.calibration_path).load()?;
-        let profile = profiles
-            .load(&self.config.default_profile)
-            .ok()
-            .or_else(|| Profile::new(&self.config.default_profile).ok());
+        let profile = profiles.load(&self.config.default_profile).ok();
 
         let mut state = self.lock_state();
         state.calibration = calibration;
@@ -172,10 +168,8 @@ impl Server {
         if let Some(profile) = profile {
             let _ = state.engine.set_profile(profile);
         }
-        if state.calibration.is_some() {
-            if let Some(calibration) = state.calibration.clone() {
-                let _ = state.engine.set_calibration(calibration);
-            }
+        if let Some(calibration) = state.calibration.clone() {
+            let _ = state.engine.set_calibration(calibration);
         }
         if let Err(err) = self.try_enable(&mut state) {
             eprintln!("trinity-daemon: engine not started: {err}");
@@ -307,18 +301,8 @@ impl Server {
     }
 
     fn rename_profile(&self, from: &str, to: &str) -> Result<(), AppError> {
-        if from == to {
-            return Ok(());
-        }
-        let mut repository = TomlProfileRepository::new(&self.config.profiles_dir);
-        let profile = repository.load(from)?;
-        let new_profile = trinity_core::Profile::new(to)?;
-        let mut renamed = new_profile;
-        for (button, combination) in profile.mappings() {
-            renamed.set_mapping(button, combination.clone());
-        }
-        repository.save(&renamed)?;
-        repository.delete(from)?;
+        let mut profiles = self.container.profile_use_case();
+        let renamed = profiles.rename(from, to)?;
         let mut state = self.lock_state();
         if state.profile_name.as_deref() == Some(from) {
             state.engine.set_profile(renamed)?;
@@ -328,30 +312,27 @@ impl Server {
     }
 
     fn delete_profile(&self, name: &str) -> Result<(), AppError> {
-        if name == self.config.default_profile {
-            return Err(AppError::Port("cannot delete the default profile".into()));
-        }
-        TomlProfileRepository::new(&self.config.profiles_dir).delete(name)?;
+        let mut profiles = self.container.profile_use_case();
+        profiles.delete(name)?;
         let mut state = self.lock_state();
         if state.profile_name.as_deref() == Some(name) {
-            if let Ok(default) = TomlProfileRepository::new(&self.config.profiles_dir)
-                .load(&self.config.default_profile)
-            {
-                state.engine.set_profile(default)?;
-                state.profile_name = Some(self.config.default_profile.clone());
-            }
+            let default = profiles.load(&self.config.default_profile)?;
+            state.engine.set_profile(default)?;
+            state.profile_name = Some(self.config.default_profile.clone());
         }
         Ok(())
     }
 
     fn load_profile_dto(&self, name: &str) -> Result<ProfileDto, AppError> {
-        let profile = TomlProfileRepository::new(&self.config.profiles_dir).load(name)?;
+        let profiles = self.container.profile_use_case();
+        let profile = profiles.load(name)?;
         trinity_infra::profile_to_dto(&profile)
     }
 
     fn save_profile_dto(&self, dto: ProfileDto) -> Result<(), AppError> {
         let profile = trinity_infra::profile_from_dto(&dto)?;
-        TomlProfileRepository::new(&self.config.profiles_dir).save(&profile)?;
+        let mut profiles = self.container.profile_use_case();
+        profiles.save(&profile)?;
         let mut state = self.lock_state();
         if state.profile_name.as_deref() == Some(profile.name()) {
             state.engine.set_profile(profile)?;

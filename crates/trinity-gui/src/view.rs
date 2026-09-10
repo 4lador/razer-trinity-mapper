@@ -169,16 +169,21 @@ fn manage_profiles_popup(app: &App) -> Element<'_, Message> {
             .width(Length::Fill)
     };
 
-    let overlay = container(
+    // Card wrapped in its own mouse_area (Noop) so clicks on the card
+    // itself don't bubble up to the overlay and close the popup.
+    let card = mouse_area(
         container(card_content)
             .style(theme::card)
             .padding(Padding::new(24.0).horizontal(28.0))
             .width(Length::Fixed(380.0)),
     )
-    .style(theme::overlay)
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .center(Length::Fill);
+    .on_press(Message::Noop);
+
+    let overlay = container(card)
+        .style(theme::overlay)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center(Length::Fill);
 
     mouse_area(overlay)
         .on_press(Message::HideManageProfiles)
@@ -188,8 +193,21 @@ fn manage_profiles_popup(app: &App) -> Element<'_, Message> {
 fn profile_list(app: &App) -> Element<'_, Message> {
     let mut list = column![].spacing(8);
 
-    for name in &app.profiles {
-        let is_default = name == "default";
+    // Only manageable profiles — "default" is not CRUD-able, it lives in the selectbox.
+    let manageable: Vec<&String> = app
+        .profiles
+        .iter()
+        .filter(|name| name.as_str() != "default")
+        .collect();
+
+    if manageable.is_empty() {
+        return text(t!("panel.no_profiles").to_string())
+            .size(12)
+            .color(theme::TEXT_DIM)
+            .into();
+    }
+
+    for name in manageable {
         let is_renaming = app.rename_from.as_deref() == Some(name.as_str());
 
         let name_content: Element<'_, Message> = if is_renaming {
@@ -198,12 +216,6 @@ fn profile_list(app: &App) -> Element<'_, Message> {
                 .on_submit(Message::ConfirmRename)
                 .size(13)
                 .style(theme::input)
-                .width(Length::Fill)
-                .into()
-        } else if is_default {
-            text(name.clone())
-                .size(13)
-                .color(theme::TEXT_DIM)
                 .width(Length::Fill)
                 .into()
         } else {
@@ -233,8 +245,6 @@ fn profile_list(app: &App) -> Element<'_, Message> {
             ]
             .spacing(4)
             .into()
-        } else if is_default {
-            container(iced::widget::Space::new().width(Length::Fixed(28.0))).into()
         } else {
             button(text("✕").size(13).color(theme::TEXT_DIM))
                 .on_press(Message::RequestDeleteProfile(name.clone()))
@@ -789,6 +799,7 @@ fn grid_cell<'a>(app: &'a App, number: u8, sizes: ResponsiveSizes) -> Element<'a
             highlighted: app.editing == Some(number) || calibrating_next,
             dimmed: app.editing.is_some_and(|editing| editing != number),
             pulse: (app.editing == Some(number) || calibrating_next) && app.pulse,
+            blocked: app.manage_open || app.confirm_delete.is_some(),
         }));
 
     mouse_area(cell)
@@ -832,7 +843,7 @@ fn settings_card<'a>(
         .spacing(10),
     )
     .style(theme::card)
-    .padding(20.0)
+    .padding(Padding::new(20.0).right(34.0))
     .width(Length::Fill)
     .into()
 }
@@ -993,7 +1004,6 @@ fn settings_page(app: &App) -> Element<'_, Message> {
             .color(theme::TEXT_DIM),
     ]
     .spacing(8);
-    page = page.push(settings_card(t!("settings.about").to_string(), about));
 
     // Shortcuts section: one trinity-ctl command per profile
     let mut shortcuts = column![].spacing(8);
@@ -1023,6 +1033,9 @@ fn settings_page(app: &App) -> Element<'_, Message> {
         t!("settings.shortcuts").to_string(),
         shortcuts,
     ));
+
+    // About last
+    page = page.push(settings_card(t!("settings.about").to_string(), about));
 
     page.into()
 }

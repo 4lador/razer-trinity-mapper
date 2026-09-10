@@ -281,6 +281,9 @@ pub struct KeyCell {
     pub highlighted: bool,
     pub dimmed: bool,
     pub pulse: bool,
+    /// Suppresses hover styling — set when a popup overlay is open,
+    /// preventing hover "bleed-through" from Stack layers.
+    pub blocked: bool,
 }
 
 pub fn key_cell(cell: KeyCell) -> impl Fn(&iced::Theme, button::Status) -> button::Style {
@@ -304,7 +307,7 @@ pub fn key_cell(cell: KeyCell) -> impl Fn(&iced::Theme, button::Status) -> butto
         if cell.dimmed {
             style.background = Some(Color::from_rgba8(0x1A, 0x1D, 0x23, 0.45).into());
         }
-        if matches!(status, button::Status::Hovered) {
+        if !cell.blocked && matches!(status, button::Status::Hovered) {
             style.background = Some(ACCENT_SOFT.into());
             style.border.color = ACCENT;
             style.border.width = 1.5;

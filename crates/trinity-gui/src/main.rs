@@ -86,6 +86,7 @@ enum Message {
     RequestDeleteProfile(String),
     ShowManageProfiles,
     HideManageProfiles,
+    Noop,
     StartRename(String),
     RenameInput(String),
     ConfirmRename,
@@ -325,6 +326,7 @@ impl App {
                 self.confirm_delete = None;
                 Task::none()
             }
+            Message::Noop => Task::none(),
             Message::StartRename(name) => {
                 self.rename_input = name.clone();
                 self.rename_from = Some(name);
