@@ -1,6 +1,6 @@
 # Maintainer: 4lador
 pkgname=razer-trinity-mapper
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Fast, native remapper for the Razer Naga Trinity's 12 side buttons on Linux"
 arch=('x86_64')
