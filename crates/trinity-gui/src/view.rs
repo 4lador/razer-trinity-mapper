@@ -848,6 +848,17 @@ fn settings_card<'a>(
     .into()
 }
 
+fn settings_card_with_title<'a>(
+    title: Element<'a, Message>,
+    content: impl Into<iced::widget::Column<'a, Message>>,
+) -> Element<'a, Message> {
+    container(column![title, content.into()].spacing(10))
+        .style(theme::card)
+        .padding(Padding::new(20.0).right(34.0))
+        .width(Length::Fill)
+        .into()
+}
+
 fn diag_row(label: String, value: String, danger: bool) -> Element<'static, Message> {
     row![
         text(label)
@@ -965,30 +976,19 @@ fn settings_page(app: &App) -> Element<'_, Message> {
         text(t!("settings.tagline").to_string())
             .size(12)
             .color(theme::TEXT_DIM),
+        button(
+            text(settings::PROJECT_URL.to_owned())
+                .size(12)
+                .font(semibold()),
+        )
+        .on_press(Message::OpenProjectUrl)
+        .style(theme::link_button)
+        .padding(Padding::new(2.0).horizontal(4.0)),
         diag_row(
             t!("settings.license_label").to_string(),
             "GPL-3.0".to_owned(),
             false,
         ),
-        row![
-            text(t!("settings.project_label").to_string())
-                .size(12)
-                .color(theme::TEXT_DIM)
-                .width(Length::Fixed(140.0)),
-            text(settings::PROJECT_URL.to_owned())
-                .size(12)
-                .color(theme::TEXT),
-            button(
-                text(t!("settings.copy").to_string())
-                    .size(11)
-                    .color(theme::TEXT)
-            )
-            .on_press(Message::CopyProjectUrl)
-            .style(theme::secondary)
-            .padding(Padding::new(5.0).horizontal(10.0)),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center),
         diag_row(
             t!("settings.icons_label").to_string(),
             "Material Design Icons (Apache-2.0)".to_owned(),
@@ -1029,10 +1029,29 @@ fn settings_page(app: &App) -> Element<'_, Message> {
             .align_y(Alignment::Center),
         );
     }
-    page = page.push(settings_card(
-        t!("settings.shortcuts").to_string(),
-        shortcuts,
-    ));
+    let shortcuts_title = row![
+        text(t!("settings.shortcuts").to_string())
+            .size(15)
+            .font(semibold())
+            .color(theme::TEXT),
+        iced::widget::tooltip(
+            text("?").size(12).color(theme::TEXT_DIM),
+            container(
+                text(t!("settings.cli_tooltip").to_string())
+                    .size(11)
+                    .color(theme::TEXT)
+            )
+            .style(theme::card)
+            .padding(10.0),
+            iced::widget::tooltip::Position::Bottom,
+        )
+        .gap(6.0),
+    ]
+    .spacing(6)
+    .align_y(Alignment::Center)
+    .into();
+
+    page = page.push(settings_card_with_title(shortcuts_title, shortcuts));
 
     // About last
     page = page.push(settings_card(t!("settings.about").to_string(), about));

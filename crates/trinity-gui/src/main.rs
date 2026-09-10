@@ -81,7 +81,7 @@ enum Message {
     Refresh,
     ToggleSettings,
     SelectLocale(String),
-    CopyProjectUrl,
+    OpenProjectUrl,
     CopyShortcut(String),
     RequestDeleteProfile(String),
     ShowManageProfiles,
@@ -292,8 +292,11 @@ impl App {
                 };
                 Task::none()
             }
-            Message::CopyProjectUrl => {
-                iced::clipboard::write(crate::settings::PROJECT_URL.to_owned())
+            Message::OpenProjectUrl => {
+                let _ = std::process::Command::new("xdg-open")
+                    .arg(crate::settings::PROJECT_URL)
+                    .spawn();
+                Task::none()
             }
             Message::CopyShortcut(command) => iced::clipboard::write(command),
             Message::RequestDeleteProfile(name) => {

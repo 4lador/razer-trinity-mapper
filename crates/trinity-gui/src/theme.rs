@@ -228,6 +228,19 @@ pub fn ghost_button(_theme: &iced::Theme, status: button::Status) -> button::Sty
     style
 }
 
+/// Hyperlink-style button: accent color, underline on hover.
+pub fn link_button(_theme: &iced::Theme, status: button::Status) -> button::Style {
+    let mut style = solid(Color::TRANSPARENT);
+    style.text_color = ACCENT;
+    style.border.radius = 4.0.into();
+    if matches!(status, button::Status::Hovered) {
+        style.border.color = ACCENT;
+        style.border.width = 0.0;
+        style.text_color = Color::from_rgb8(0x58, 0xE8, 0x3F);
+    }
+    style
+}
+
 /// Minimal scrollbar: invisible rail, thin translucent thumb.
 /// Profile pick_list styled to match the theme.
 pub fn picker(_theme: &iced::Theme, status: pick_list::Status) -> pick_list::Style {
