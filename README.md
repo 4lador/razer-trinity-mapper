@@ -48,31 +48,39 @@ remapping is transparent to Wayland, X11 and games.
 
 ## Installation
 
-### Requirements
-
-- Linux with glibc ≥ 2.34 (Ubuntu 22.04+, Debian 12+, Fedora 38+, Arch, openSUSE).
-- `bash`, `curl`, `tar` (for the install script).
-- The `uinput` kernel module (not loaded by default on some distros):
+### Quick install (recommended)
 
 ```bash
-sudo modprobe uinput
-echo uinput | sudo tee /etc/modules-load.d/uinput.conf   # at boot
+curl -fsSL https://raw.githubusercontent.com/4lador/razer-trinity-mapper/main/install.sh | bash
 ```
 
-- Read access to the input nodes (usually granted to local sessions via
-  udev ACLs; otherwise add yourself to the `input` group).
-- Write access to `/dev/uinput`:
+Downloads prebuilt binaries and installs to `~/.local/bin`. Then follow
+the [requirements](#requirements) steps below.
+
+### With udev rule + systemd service
 
 ```bash
-sudo groupadd -r uinput 2>/dev/null || true
-sudo usermod -aG input,uinput "$USER"
-sudo cp packaging/60-trinity-mapper.rules /etc/udev/rules.d/
-sudo udevadm control --reload && sudo udevadm trigger
+curl -fsSL https://raw.githubusercontent.com/4lador/razer-trinity-mapper/main/install.sh \
+  | bash -s -- --with-udev --with-service
 ```
 
-Then log out and back in.
+### Other install methods
 
-### Build
+<details>
+<summary>cargo install (Rust users)</summary>
+
+```bash
+cargo install --git https://github.com/4lador/razer-trinity-mapper trinity-daemon trinity-gui
+```
+
+Installs all three binaries (`trinity-daemon` and `trinity-ctl` come from
+the same crate). Requires `libxkbcommon` development headers and
+`pkg-config` to build.
+
+</details>
+
+<details>
+<summary>From source</summary>
 
 ```bash
 git clone https://github.com/4lador/razer-trinity-mapper
@@ -80,16 +88,105 @@ cd razer-trinity-mapper
 cargo build --release
 install -Dm755 target/release/trinity-daemon ~/.local/bin/trinity-daemon
 install -Dm755 target/release/trinity-gui ~/.local/bin/trinity-gui
+install -Dm755 target/release/trinity-ctl ~/.local/bin/trinity-ctl
 ```
 
-### Optional: start the engine at login
+</details>
+
+<details>
+<summary>Arch Linux (AUR — when available)</summary>
 
 ```bash
-mkdir -p ~/.config/systemd/user
-cp packaging/trinity-mapper.service ~/.config/systemd/user/
-systemctl --user daemon-reload
+yay -S razer-trinity-mapper
+```
+
+</details>
+
+### Requirements
+
+After installing the binaries, set up the kernel module and permissions:
+
+1. Load the `uinput` module (not loaded by default on some distros):
+
+```bash
+sudo modprobe uinput
+echo uinput | sudo tee /etc/modules-load.d/uinput.conf   # at boot
+```
+
+2. Grant access to input devices and `/dev/uinput`:
+
+```bash
+sudo groupadd -r uinput 2>/dev/null || true
+sudo usermod -aG input,uinput "$USER"
+```
+
+If you used `--with-udev`, the udev rule is already installed.
+Otherwise:
+
+```bash
+sudo cp packaging/60-trinity-mapper.rules /etc/udev/rules.d/
+sudo udevadm control --reload && sudo udevadm trigger
+```
+
+3. Log out and back in (group changes require a new session).
+
+4. Start the engine and GUI:
+
+```bash
+trinity-daemon &
+trinity-gui &
+```
+
+Or enable the systemd user service (if installed with `--with-service`):
+
+```bash
 systemctl --user enable --now trinity-mapper.service
 ```
+
+### Troubleshooting
+
+<details>
+<summary>Mouse completely stops responding after enabling remapping</summary>
+
+The daemon holds an exclusive grab. Kill it and the mouse returns to native mode:
+
+```bash
+pkill trinity-daemon
+```
+
+</details>
+
+<details>
+<summary>"No such device" or "Permission denied" when starting the daemon</summary>
+
+The `uinput` module is not loaded or you lack permissions:
+
+```bash
+lsmod | grep uinput           # check module
+sudo modprobe uinput           # load it
+groups | grep -w input        # check group
+groups | grep -w uinput       # check group
+```
+
+</details>
+
+<details>
+<summary>Keys are remapped to the wrong characters (AZERTY, QWERTZ…)</summary>
+
+The GUI captures keys using your active keyboard layout (via xkbcommon).
+Make sure your session exports the correct `XKB_DEFAULT_LAYOUT` or run the
+recalibration from Settings → Diagnostics.
+
+</details>
+
+<details>
+<summary>Wayland vs X11</summary>
+
+Both are supported. On Wayland, the app uses client-side decorations
+(transparent corners, integrated title bar). On X11, it falls back to
+system decorations for compatibility.
+
+</details>
 
 ## Usage
 
