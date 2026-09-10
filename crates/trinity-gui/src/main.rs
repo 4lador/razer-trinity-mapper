@@ -84,6 +84,11 @@ enum Message {
     ToggleSettings,
     SelectLocale(String),
     CopyProjectUrl,
+    CopyShortcut(String),
+    RequestDeleteProfile(String),
+    ProfileHover(Option<String>),
+    ConfirmDeleteProfile,
+    CancelDeleteProfile,
 }
 
 /// Page displayed in the main scene.
@@ -112,6 +117,8 @@ struct App {
     maximized: bool,
     route: Route,
     settings: settings::GuiSettings,
+    confirm_delete: Option<String>,
+    hovered_profile: Option<String>,
 }
 
 impl App {
@@ -135,6 +142,8 @@ impl App {
             maximized: false,
             route: Route::Main,
             settings: settings::GuiSettings::load(),
+            confirm_delete: None,
+            hovered_profile: None,
         };
         rust_i18n::set_locale(app.settings.effective_locale().as_str());
         app
@@ -231,6 +240,10 @@ impl App {
             }
             Message::KeyPressed(key, modifiers) => {
                 if matches!(key, Key::Named(iced::keyboard::key::Named::Escape)) {
+                    if self.confirm_delete.is_some() {
+                        self.confirm_delete = None;
+                        return Task::none();
+                    }
                     if self.editing.is_some() {
                         self.editing = None;
                         return Task::none();
@@ -284,6 +297,29 @@ impl App {
             Message::CopyProjectUrl => {
                 iced::clipboard::write(crate::settings::PROJECT_URL.to_owned())
             }
+            Message::CopyShortcut(command) => iced::clipboard::write(command),
+            Message::ProfileHover(name) => {
+                self.hovered_profile = name;
+                Task::none()
+            }
+            Message::RequestDeleteProfile(name) => {
+                self.confirm_delete = Some(name);
+                Task::none()
+            }
+            Message::ConfirmDeleteProfile => {
+                let Some(name) = self.confirm_delete.take() else {
+                    return Task::none();
+                };
+                Task::batch([
+                    self.send(Request::DeleteProfile { name }),
+                    self.send(Request::ListProfiles),
+                    self.send(Request::GetStatus),
+                ])
+            }
+            Message::CancelDeleteProfile => {
+                self.confirm_delete = None;
+                Task::none()
+            }
             Message::SelectLocale(locale) => {
                 if settings::LOCALES.contains(&locale.as_str()) {
                     rust_i18n::set_locale(locale.as_str());
@@ -318,6 +354,7 @@ impl App {
                 Task::batch(tasks)
             }
             Response::Profiles { names } => {
+                self.profiles = names;
                 if let Some(active) = self.status.as_ref().and_then(|s| s.profile.clone()) {
                     if self.loaded_profile.as_ref().map(|p| p.name.as_str())
                         != Some(active.as_str())
@@ -325,7 +362,6 @@ impl App {
                         return self.send(Request::GetProfile { name: active });
                     }
                 }
-                self.profiles = names;
                 Task::none()
             }
             Response::Profile { profile } => {

@@ -1,6 +1,6 @@
 //! "Razer black & green" theme — palette and widget styles.
 
-use iced::widget::{button, container};
+use iced::widget::{button, container, scrollable};
 use iced::{Border, Color};
 
 pub const FONT_NAME: &str = "Inter";
@@ -190,6 +190,54 @@ pub fn profile_entry(is_active: bool) -> impl Fn(&iced::Theme, button::Status) -
             style.border.color = ACCENT;
         }
         style
+    }
+}
+
+/// Copy-to-clipboard button: ghost at rest, accent green on hover.
+pub fn copy_button(_theme: &iced::Theme, status: button::Status) -> button::Style {
+    let mut style = solid(Color::TRANSPARENT);
+    style.border.radius = 6.0.into();
+    if matches!(status, button::Status::Hovered) {
+        style.background = Some(ACCENT_SOFT.into());
+        style.border.color = ACCENT;
+        style.border.width = 1.0;
+    }
+    style
+}
+
+/// Delete button: ghost at rest, danger red on hover.
+pub fn delete_button(_theme: &iced::Theme, status: button::Status) -> button::Style {
+    let mut style = solid(Color::TRANSPARENT);
+    style.border.radius = 6.0.into();
+    if matches!(status, button::Status::Hovered) {
+        style.background = Some(DANGER_SOFT.into());
+        style.border.color = DANGER;
+        style.border.width = 1.0;
+    }
+    style
+}
+
+/// Minimal scrollbar: invisible rail, thin translucent thumb.
+pub fn minimal_scrollbar(_theme: &iced::Theme, _status: scrollable::Status) -> scrollable::Style {
+    let rail = scrollable::Rail {
+        background: None,
+        border: Border::default(),
+        scroller: scrollable::Scroller {
+            background: Color::from_rgba8(0xFF, 0xFF, 0xFF, 0.15).into(),
+            border: Border::default(),
+        },
+    };
+    scrollable::Style {
+        container: container::Style::default(),
+        vertical_rail: rail,
+        horizontal_rail: rail,
+        gap: None,
+        auto_scroll: scrollable::AutoScroll {
+            background: Color::TRANSPARENT.into(),
+            border: Border::default(),
+            shadow: iced::Shadow::default(),
+            icon: Color::TRANSPARENT,
+        },
     }
 }
 

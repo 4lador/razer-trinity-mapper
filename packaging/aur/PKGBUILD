@@ -25,6 +25,7 @@ package() {
     cd "$pkgname-$pkgver"
     install -Dm755 target/release/trinity-daemon "$pkgdir/usr/bin/trinity-daemon"
     install -Dm755 target/release/trinity-gui "$pkgdir/usr/bin/trinity-gui"
+    install -Dm755 target/release/trinity-ctl "$pkgdir/usr/bin/trinity-ctl"
     install -Dm644 packaging/60-trinity-mapper.rules \
         "$pkgdir/usr/lib/udev/rules.d/60-trinity-mapper.rules"
     sed -i 's|%h/.local/bin/trinity-daemon|/usr/bin/trinity-daemon|' \
