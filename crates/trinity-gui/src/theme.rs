@@ -1,6 +1,6 @@
 //! "Razer black & green" theme — palette and widget styles.
 
-use iced::widget::{button, container, scrollable};
+use iced::widget::{button, container, pick_list, scrollable};
 use iced::{Border, Color};
 
 pub const FONT_NAME: &str = "Inter";
@@ -217,7 +217,40 @@ pub fn delete_button(_theme: &iced::Theme, status: button::Status) -> button::St
     style
 }
 
+/// Ghost button: transparent, subtle surface on hover (for inline actions like profile rename).
+pub fn ghost_button(_theme: &iced::Theme, status: button::Status) -> button::Style {
+    let mut style = solid(Color::TRANSPARENT);
+    style.text_color = TEXT;
+    style.border.radius = 6.0.into();
+    if matches!(status, button::Status::Hovered) {
+        style.background = Some(SURFACE_HI.into());
+    }
+    style
+}
+
 /// Minimal scrollbar: invisible rail, thin translucent thumb.
+/// Profile pick_list styled to match the theme.
+pub fn picker(_theme: &iced::Theme, status: pick_list::Status) -> pick_list::Style {
+    let mut style = pick_list::Style {
+        text_color: TEXT,
+        placeholder_color: TEXT_DIM,
+        handle_color: TEXT_DIM,
+        background: SURFACE_HI.into(),
+        border: iced::Border {
+            color: BORDER,
+            width: 1.0,
+            radius: 10.0.into(),
+        },
+    };
+    if matches!(status, pick_list::Status::Hovered) {
+        style.border.color = ACCENT_DARK;
+    }
+    if matches!(status, pick_list::Status::Opened { .. }) {
+        style.border.color = ACCENT;
+    }
+    style
+}
+
 pub fn minimal_scrollbar(_theme: &iced::Theme, _status: scrollable::Status) -> scrollable::Style {
     let rail = scrollable::Rail {
         background: None,

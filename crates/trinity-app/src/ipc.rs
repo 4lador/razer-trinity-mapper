@@ -13,6 +13,7 @@ pub enum Request {
     SaveProfile { profile: ProfileDto },
     SetProfile { name: String },
     DeleteProfile { name: String },
+    RenameProfile { from: String, to: String },
     BeginCalibration,
     CancelCalibration,
     FinishCalibration,
@@ -100,6 +101,10 @@ mod tests {
                         modifiers: vec!["KEY_LEFTCTRL".into()],
                     }],
                 },
+            },
+            Request::RenameProfile {
+                from: "mmo".into(),
+                to: "mmo2".into(),
             },
             Request::BeginCalibration,
             Request::CancelCalibration,

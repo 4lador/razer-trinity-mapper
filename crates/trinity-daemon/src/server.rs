@@ -232,6 +232,7 @@ impl Server {
             Request::SetEnabled { enabled } => self.set_enabled(enabled),
             Request::SetProfile { name } => self.set_profile(&name),
             Request::DeleteProfile { name } => self.delete_profile(&name),
+            Request::RenameProfile { from, to } => self.rename_profile(&from, &to),
             Request::ListProfiles => {
                 let profiles = TomlProfileRepository::new(&self.config.profiles_dir);
                 return match profiles.list() {
@@ -300,6 +301,24 @@ impl Server {
         let mut state = self.lock_state();
         state.engine.set_profile(profile)?;
         state.profile_name = Some(name.to_owned());
+        Ok(())
+    }
+
+    fn rename_profile(&self, from: &str, to: &str) -> Result<(), AppError> {
+        let mut repository = TomlProfileRepository::new(&self.config.profiles_dir);
+        let profile = repository.load(from)?;
+        let new_profile = trinity_core::Profile::new(to)?;
+        let mut renamed = new_profile;
+        for (button, combination) in profile.mappings() {
+            renamed.set_mapping(button, combination.clone());
+        }
+        repository.save(&renamed)?;
+        repository.delete(from)?;
+        let mut state = self.lock_state();
+        if state.profile_name.as_deref() == Some(from) {
+            state.engine.set_profile(renamed)?;
+            state.profile_name = Some(to.to_owned());
+        }
         Ok(())
     }
 
