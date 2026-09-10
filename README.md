@@ -103,6 +103,22 @@ systemctl --user enable --now trinity-mapper.service
 Profiles live in `~/.config/razer-trinity-mapper/` (one TOML file per
 profile + `calibration.toml`).
 
+## Uninstall
+
+### Via install.sh
+```bash
+./install.sh --uninstall          # remove binaries only
+./install.sh --uninstall --all    # remove everything (udev, systemd, config)
+```
+
+### Via pacman (AUR, when available)
+```bash
+sudo pacman -R razer-trinity-mapper
+```
+
+User config (`~/.config/razer-trinity-mapper/`) is never removed by
+pacman — delete it manually if you want a full cleanup.
+
 ## Keyboard shortcuts
 
 Switch profiles from a key combination by binding `trinity-ctl` in your

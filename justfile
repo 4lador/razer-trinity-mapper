@@ -49,6 +49,10 @@ install-user:
 	install -Dm755 target/release/trinity-gui ~/.local/bin/trinity-gui
 	install -Dm755 target/release/trinity-ctl ~/.local/bin/trinity-ctl
 
+# Remove dev-installed binaries
+uninstall:
+	rm -f ~/.local/bin/trinity-daemon ~/.local/bin/trinity-gui ~/.local/bin/trinity-ctl
+
 # Run the engine (before the GUI)
 run-daemon:
 	cargo run -p trinity-daemon --bin trinity-daemon
