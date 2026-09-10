@@ -153,7 +153,8 @@ impl Server {
         Ok(())
     }
 
-    fn bootstrap(&self) -> Result<(), AppError> {
+    /// Initializes state (default profile, calibration) — public for tests.
+    pub fn bootstrap(&self) -> Result<(), AppError> {
         let mut profiles = TomlProfileRepository::new(&self.config.profiles_dir);
         if profiles.list().unwrap_or_default().is_empty() {
             let default = Profile::new(&self.config.default_profile)?;
@@ -226,7 +227,8 @@ impl Server {
         false
     }
 
-    fn handle_request(&self, request: Request) -> Response {
+    /// Handles a single IPC request — public for integration tests.
+    pub fn handle_request(&self, request: Request) -> Response {
         let result = match request {
             Request::GetStatus => return self.build_status(),
             Request::SetEnabled { enabled } => self.set_enabled(enabled),
@@ -305,6 +307,9 @@ impl Server {
     }
 
     fn rename_profile(&self, from: &str, to: &str) -> Result<(), AppError> {
+        if from == to {
+            return Ok(());
+        }
         let mut repository = TomlProfileRepository::new(&self.config.profiles_dir);
         let profile = repository.load(from)?;
         let new_profile = trinity_core::Profile::new(to)?;
