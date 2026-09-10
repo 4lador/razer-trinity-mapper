@@ -602,7 +602,12 @@ mod tests {
         let Response::Error { message } = response else {
             panic!("expected error");
         };
-        assert!(message.contains("no Trinity node"), "message: {message}");
+        // Either the device directory exists but no Trinity is found,
+        // or the directory itself is missing (Docker/CI environment).
+        assert!(
+            message.contains("no Trinity node") || message.contains("reading"),
+            "message: {message}"
+        );
     }
 
     #[test]
