@@ -10,6 +10,17 @@
 #   ./install.sh --uninstall --all        # remove binaries + udev + systemd + config
 set -euo pipefail
 
+# Check prerequisites
+if ! command -v curl >/dev/null 2>&1; then
+    echo "error: curl is required but not installed"
+    echo "hint: sudo apt install curl  # or your distro's equivalent"
+    exit 1
+fi
+if ! command -v tar >/dev/null 2>&1; then
+    echo "error: tar is required but not installed"
+    exit 1
+fi
+
 REPO="4lador/razer-trinity-mapper"
 PREFIX="$HOME/.local/bin"
 WITH_UDEV=0

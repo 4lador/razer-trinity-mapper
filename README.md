@@ -50,7 +50,8 @@ remapping is transparent to Wayland, X11 and games.
 
 ### Requirements
 
-- Rust (stable) and Linux with a recent kernel.
+- Linux with glibc ≥ 2.34 (Ubuntu 22.04+, Debian 12+, Fedora 38+, Arch, openSUSE).
+- `bash`, `curl`, `tar` (for the install script).
 - The `uinput` kernel module (not loaded by default on some distros):
 
 ```bash
