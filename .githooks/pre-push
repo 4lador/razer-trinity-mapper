@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Runs fast checks before allowing a push.
+set -euo pipefail
+echo "── pre-push: just check ──"
+just check
