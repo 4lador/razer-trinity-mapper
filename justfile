@@ -29,6 +29,14 @@ arch:
 links:
 	./scripts/check-links.sh
 
+# English-only codebase guard
+lang:
+	./scripts/check-language.sh
+
+# Install versioned git hooks (one-time per clone)
+setup:
+	git config core.hooksPath .githooks
+
 
 # Release build
 build:
@@ -50,4 +58,4 @@ run-gui:
 	cargo run -p trinity-gui
 
 # Run every check
-check: fmt lint test arch
+check: fmt lint test arch lang
