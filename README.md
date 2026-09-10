@@ -103,7 +103,32 @@ systemctl --user enable --now trinity-mapper.service
 Profiles live in `~/.config/razer-trinity-mapper/` (one TOML file per
 profile + `calibration.toml`).
 
-The daemon can also be driven from the CLI (JSON lines over a Unix socket):
+## Keyboard shortcuts
+
+Switch profiles from a key combination by binding `trinity-ctl` in your
+desktop's shortcut settings:
+
+| Desktop | Where to configure |
+|---|---|
+| KDE Plasma | System Settings → Shortcuts → Add Command |
+| [GNOME](https://help.gnome.org/users/gnome-help/stable/keyboard.html) | Settings → Keyboard → Custom Shortcuts |
+| [sway](https://man.archlinux.org/man/sway.5) | `bindsym $mod+F1 exec trinity-ctl profile mmo` in config |
+| [i3](https://i3wm.org/docs/userguide.html#keybindings) | Same syntax as sway |
+| Hyprland | `bind = $mod, F1, exec, trinity-ctl profile mmo` in hyprland.conf |
+| [Xfce](https://docs.xfce.org/xfce/xfce4-settings/keyboard) | Settings → Keyboard → Application Shortcuts |
+| Any X11 WM | [xbindkeys](https://man.archlinux.org/man/xbindkeys.1) |
+
+## CLI
+
+The daemon can also be driven from the CLI:
+
+```bash
+trinity-ctl status              # daemon state
+trinity-ctl profiles            # list profiles
+trinity-ctl profile mmo         # switch to a profile
+```
+
+Or directly over the Unix socket (JSON lines):
 
 ```bash
 echo '{"type":"get_status"}' | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/trinity-mapper.sock

@@ -25,6 +25,10 @@ fmt-fix:
 arch:
 	./scripts/check-architecture.sh
 
+# Documentation link check (requires network)
+links:
+	./scripts/check-links.sh
+
 
 # Release build
 build:
@@ -35,6 +39,7 @@ install-user:
 	cargo build --release -p trinity-daemon -p trinity-gui
 	install -Dm755 target/release/trinity-daemon ~/.local/bin/trinity-daemon
 	install -Dm755 target/release/trinity-gui ~/.local/bin/trinity-gui
+	install -Dm755 target/release/trinity-ctl ~/.local/bin/trinity-ctl
 
 # Run the engine (before the GUI)
 run-daemon:

@@ -1,7 +1,7 @@
 //! UI rendering: 3x4 grid, profile panel, calibration, capture.
 
 use iced::widget::{
-    button, column, container, mouse_area, row, scrollable, text, text_input, toggler,
+    button, column, container, mouse_area, pick_list, row, scrollable, text, text_input, toggler,
 };
 use iced::{Alignment, Color, Element, Length, Padding};
 
@@ -12,7 +12,7 @@ use rust_i18n::t;
 use crate::icons::{self, MouseAction};
 use crate::settings;
 use crate::theme;
-use crate::{App, Message, Route, WindowLayout};
+use crate::{App, Message, Route};
 
 pub fn render(app: &App) -> Element<'_, Message> {
     let body = match app.route {
@@ -34,7 +34,22 @@ pub fn render(app: &App) -> Element<'_, Message> {
     };
 
     let mut content = column![].spacing(14);
-    content = content.push(scrollable(body).width(Length::Fill).height(Length::Fill));
+    let body_area: Element<'_, Message> = if app.route == Route::Settings {
+        scrollable(body)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(theme::minimal_scrollbar)
+            .into()
+    } else {
+        // Main view: centered without scrollable (no scrollbar offset).
+        container(body)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into()
+    };
+    content = content.push(body_area);
     if app.route == Route::Main {
         content = content.push(footer());
     }
@@ -57,6 +72,9 @@ pub fn render(app: &App) -> Element<'_, Message> {
     if let Some(notice) = app.notice.as_ref() {
         layered = layered.push(error_toast_layer(&notice.text));
     }
+    if app.manage_open {
+        layered = layered.push(manage_profiles_popup(app));
+    }
     container(layered)
         .style(theme::app_background_for(app.csd, app.maximized))
         .width(Length::Fill)
@@ -66,6 +84,199 @@ pub fn render(app: &App) -> Element<'_, Message> {
 
 /// Floating error toast: anchored bottom-right, overlaid on the
 /// content, does not intercept clicks (non-interactive container).
+/// Delete-confirmation popup: dark overlay + centered card.
+/// Manage-profiles popup: list with rename/delete + add input + close.
+fn manage_profiles_popup(app: &App) -> Element<'_, Message> {
+    let list = profile_list(app);
+    let can_add = !app.manage_input.trim().is_empty();
+    let add_row = row![
+        text_input(t!("toolbar.add_placeholder").as_ref(), &app.manage_input)
+            .on_input(Message::ManageProfileInput)
+            .on_submit(Message::ManageAddProfile)
+            .size(13)
+            .style(theme::input)
+            .width(Length::Fill),
+        button(
+            text(t!("toolbar.add").to_string())
+                .size(12)
+                .color(Color::BLACK),
+        )
+        .on_press_maybe(can_add.then_some(Message::ManageAddProfile))
+        .style(theme::primary)
+        .padding(Padding::new(7.0).horizontal(14.0)),
+    ]
+    .spacing(10)
+    .align_y(Alignment::Center);
+
+    let title_row = row![
+        text(t!("toolbar.manage_title").to_string())
+            .size(17)
+            .font(semibold())
+            .color(theme::TEXT)
+            .width(Length::Fill),
+        button(text("✕").size(14).color(theme::TEXT_DIM))
+            .on_press(Message::HideManageProfiles)
+            .style(theme::delete_button)
+            .padding(6.0),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center);
+
+    let separator = container(
+        iced::widget::Space::new()
+            .width(Length::Fill)
+            .height(Length::Fixed(1.0)),
+    )
+    .style(|_t| iced::widget::container::Style {
+        background: Some(theme::BORDER.into()),
+        ..iced::widget::container::Style::default()
+    });
+
+    let card_content = if let Some(name) = app.confirm_delete.as_ref() {
+        column![
+            text(t!("panel.confirm_delete_title").to_string())
+                .size(17)
+                .font(semibold())
+                .color(theme::TEXT),
+            text(t!("panel.confirm_delete_body", name = name.to_string()).to_string(),)
+                .size(13)
+                .color(theme::TEXT_DIM),
+            row![
+                button(
+                    text(t!("calibration.cancel").to_string())
+                        .size(13)
+                        .color(theme::TEXT),
+                )
+                .on_press(Message::CancelDeleteProfile)
+                .style(theme::secondary)
+                .padding(Padding::new(8.0).horizontal(16.0)),
+                button(
+                    text(t!("panel.delete").to_string())
+                        .size(13)
+                        .color(theme::DANGER),
+                )
+                .on_press(Message::ConfirmDeleteProfile)
+                .style(theme::danger)
+                .padding(Padding::new(8.0).horizontal(16.0)),
+            ]
+            .spacing(10),
+        ]
+        .spacing(14)
+        .width(Length::Fill)
+    } else {
+        column![title_row, list, separator, add_row,]
+            .spacing(14)
+            .width(Length::Fill)
+    };
+
+    // Card wrapped in its own mouse_area (Noop) so clicks on the card
+    // itself don't bubble up to the overlay and close the popup.
+    let card = mouse_area(
+        container(card_content)
+            .style(theme::card)
+            .padding(Padding::new(24.0).horizontal(28.0))
+            .width(Length::Fixed(380.0)),
+    )
+    .on_press(Message::Noop);
+
+    let overlay = container(card)
+        .style(theme::overlay)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center(Length::Fill);
+
+    mouse_area(overlay)
+        .on_press(Message::HideManageProfiles)
+        .into()
+}
+
+fn profile_list(app: &App) -> Element<'_, Message> {
+    let mut list = column![].spacing(8);
+
+    // Only manageable profiles — "default" is not CRUD-able, it lives in the selectbox.
+    let manageable: Vec<&String> = app
+        .profiles
+        .iter()
+        .filter(|name| name.as_str() != "default")
+        .collect();
+
+    if manageable.is_empty() {
+        return text(t!("panel.no_profiles").to_string())
+            .size(12)
+            .color(theme::TEXT_DIM)
+            .into();
+    }
+
+    for name in manageable {
+        let is_renaming = app.rename_from.as_deref() == Some(name.as_str());
+
+        let name_content: Element<'_, Message> = if is_renaming {
+            text_input("", &app.rename_input)
+                .on_input(Message::RenameInput)
+                .on_submit(Message::ConfirmRename)
+                .size(13)
+                .style(theme::input)
+                .width(Length::Fill)
+                .into()
+        } else {
+            button(
+                text(name.clone())
+                    .size(13)
+                    .color(theme::TEXT)
+                    .width(Length::Fill),
+            )
+            .on_press(Message::StartRename(name.clone()))
+            .style(theme::ghost_button)
+            .padding(Padding::new(2.0).horizontal(4.0))
+            .width(Length::Fill)
+            .into()
+        };
+
+        let actions: Element<'_, Message> = if is_renaming {
+            row![
+                button(text("✓").size(13).color(theme::ACCENT))
+                    .on_press(Message::ConfirmRename)
+                    .style(theme::copy_button)
+                    .padding(6.0),
+                button(text("✕").size(13).color(theme::DANGER))
+                    .on_press(Message::CancelRenameAction)
+                    .style(theme::delete_button)
+                    .padding(6.0),
+            ]
+            .spacing(4)
+            .into()
+        } else {
+            button(text("✕").size(13).color(theme::TEXT_DIM))
+                .on_press(Message::RequestDeleteProfile(name.clone()))
+                .style(theme::delete_button)
+                .padding(6.0)
+                .into()
+        };
+
+        let entry = container(
+            row![name_content, actions]
+                .spacing(8)
+                .align_y(Alignment::Center),
+        )
+        .style(|_t| iced::widget::container::Style {
+            background: Some(theme::SURFACE.into()),
+            border: iced::Border {
+                color: theme::BORDER,
+                width: 1.0,
+                radius: 10.0.into(),
+            },
+            ..iced::widget::container::Style::default()
+        })
+        .padding(Padding::new(4.0).horizontal(12.0))
+        .height(Length::Fixed(38.0))
+        .width(Length::Fill);
+
+        list = list.push(entry);
+    }
+
+    list.into()
+}
+
 fn error_toast_layer(message: &str) -> Element<'_, Message> {
     container(
         container(
@@ -386,23 +597,92 @@ fn calibration<'a>(app: &'a App, status: &'a Status) -> Element<'a, Message> {
     )
 }
 
+/// Responsive sizes derived from window width.
+#[derive(Debug, Clone, Copy)]
+pub struct ResponsiveSizes {
+    pub grid_max: f32,
+    pub cell_height: f32,
+    pub grid_spacing: f32,
+    pub toolbar_spacing: f32,
+    pub cell_padding: f32,
+}
+
+/// Proportional layout: grid takes 60% of window width, clamped 420–700px.
+/// Button height maintains a 0.6 aspect ratio; spacing scales with the grid.
+pub fn responsive_sizes(window_width: f32) -> ResponsiveSizes {
+    let grid_max = (window_width * 0.6).clamp(420.0, 700.0);
+    let grid_spacing = (grid_max * 0.023).max(8.0);
+    let cell_width = (grid_max - 2.0 * grid_spacing) / 3.0;
+    let cell_height = cell_width * 0.6;
+    let toolbar_spacing = (grid_max * 0.05).max(16.0);
+    let cell_padding = (cell_width * 0.086).min(14.0);
+    ResponsiveSizes {
+        grid_max,
+        cell_height,
+        grid_spacing,
+        toolbar_spacing,
+        cell_padding,
+    }
+}
+
 fn main_view<'a>(app: &'a App, status: &'a Status) -> Element<'a, Message> {
     if let Some(button) = app.editing {
         return capture_overlay(app, button);
     }
-    let grid = container(grid(app))
-        .style(theme::card)
-        .padding(22.0)
+    if !status.calibrated {
+        return column![
+            text(t!("panel.first_use_text").to_string())
+                .size(14)
+                .color(theme::TEXT_DIM)
+        ]
+        .spacing(12)
+        .into();
+    }
+    let sizes = responsive_sizes(app.window_width);
+    let toolbar = profile_toolbar(app);
+    let centered_grid = container(grid(app, sizes))
         .width(Length::Fill)
         .center_x(Length::Fill);
-    let side = side_panel(app, status, app.window_width);
-    match crate::layout_for(app.window_width) {
-        WindowLayout::Wide => row![grid, side]
-            .spacing(18)
-            .align_y(Alignment::Start)
-            .into(),
-        WindowLayout::Narrow => column![grid, side].spacing(18).into(),
-    }
+    let inner = container(
+        column![toolbar, centered_grid]
+            .spacing(sizes.toolbar_spacing)
+            .width(Length::Fill)
+            .align_x(Alignment::Center),
+    )
+    .max_width(sizes.grid_max)
+    .width(Length::Fill);
+    container(inner)
+        .width(Length::Fill)
+        .center_x(Length::Fill)
+        .into()
+}
+
+/// Header bar: selectbox fills width, manage button anchored right.
+fn profile_toolbar(app: &App) -> Element<'_, Message> {
+    let selected = app
+        .loaded_profile
+        .as_ref()
+        .map(|profile| profile.name.clone());
+
+    let picker = pick_list(app.profiles.clone(), selected, Message::SelectProfile)
+        .placeholder("—")
+        .width(Length::Fill)
+        .style(theme::picker);
+
+    let manage = button(
+        text(t!("toolbar.manage").to_string())
+            .size(12)
+            .color(theme::TEXT),
+    )
+    .on_press(Message::ShowManageProfiles)
+    .style(theme::secondary)
+    .padding(Padding::new(8.0).horizontal(14.0));
+
+    row![picker, manage]
+        .spacing(12)
+        .align_y(Alignment::Center)
+        .width(Length::Fill)
+        .into()
 }
 
 fn capture_overlay(app: &App, button: u8) -> Element<'_, Message> {
@@ -463,22 +743,24 @@ fn centered_card<'a>(
     .into()
 }
 
-fn grid(app: &App) -> Element<'_, Message> {
+fn grid(app: &App, sizes: ResponsiveSizes) -> Element<'_, Message> {
     let rows = (1u8..=12)
         .step_by(3)
         .map(|first| {
-            let cells = (first..first + 3).map(|number| grid_cell(app, number));
-            row(cells).spacing(10).width(Length::Fill).into()
+            let cells = (first..first + 3).map(|number| grid_cell(app, number, sizes));
+            row(cells)
+                .spacing(sizes.grid_spacing)
+                .width(Length::Fill)
+                .into()
         })
         .collect::<Vec<Element<'_, Message>>>();
     column(rows)
-        .spacing(10)
+        .spacing(sizes.grid_spacing)
         .width(Length::Fill)
-        .max_width(440.0)
         .into()
 }
 
-fn grid_cell<'a>(app: &'a App, number: u8) -> Element<'a, Message> {
+fn grid_cell<'a>(app: &'a App, number: u8, sizes: ResponsiveSizes) -> Element<'a, Message> {
     let status = app.status.as_ref();
     let calibrating_next = status
         .map(|status| status.calibrating && status.current_button == Some(number))
@@ -509,14 +791,15 @@ fn grid_cell<'a>(app: &'a App, number: u8) -> Element<'a, Message> {
 
     let cell = button(content)
         .on_press(Message::EditButton(number))
-        .padding(Padding::new(12.0))
-        .width(Length::Fixed(118.0))
-        .height(Length::Fixed(84.0))
+        .padding(Padding::new(sizes.cell_padding))
+        .width(Length::Fill)
+        .height(Length::Fixed(sizes.cell_height))
         .style(theme::key_cell(theme::KeyCell {
             mapped,
             highlighted: app.editing == Some(number) || calibrating_next,
             dimmed: app.editing.is_some_and(|editing| editing != number),
             pulse: (app.editing == Some(number) || calibrating_next) && app.pulse,
+            blocked: app.manage_open || app.confirm_delete.is_some(),
         }));
 
     mouse_area(cell)
@@ -548,148 +831,6 @@ fn cell_label(app: &App, profile: &ProfileDto, number: u8) -> String {
         })
         .unwrap_or_else(|| "—".to_owned())
 }
-
-fn side_panel<'a>(app: &'a App, status: &'a Status, window_width: f32) -> Element<'a, Message> {
-    let panel_width = match crate::layout_for(window_width) {
-        WindowLayout::Wide => Length::Fixed(300.0),
-        WindowLayout::Narrow => Length::Fill,
-    };
-    let mut panel = column![].spacing(12).width(panel_width);
-
-    if !status.calibrated {
-        panel = panel.push(
-            column![
-                text(t!("panel.first_use_title").to_string())
-                    .size(15)
-                    .font(semibold())
-                    .color(theme::TEXT),
-                text(t!("panel.first_use_text").to_string())
-                    .size(12)
-                    .color(theme::TEXT_DIM),
-                button(
-                    text(t!("panel.start_calibration").to_string())
-                        .size(13)
-                        .font(semibold())
-                        .color(Color::BLACK),
-                )
-                .on_press(Message::StartCalibration)
-                .style(theme::primary)
-                .padding(Padding::new(10.0).horizontal(16.0)),
-            ]
-            .spacing(8),
-        );
-    }
-
-    let active = app
-        .loaded_profile
-        .as_ref()
-        .map(|profile| profile.name.clone());
-    let mut profiles = column![].spacing(6);
-    for name in &app.profiles {
-        let is_active = active.as_deref() == Some(name.as_str());
-        let entry = button(
-            row![
-                text(if is_active { "●" } else { "○" })
-                    .size(11)
-                    .color(if is_active {
-                        theme::ACCENT
-                    } else {
-                        theme::TEXT_DIM
-                    }),
-                text(name.clone()).size(13).color(if is_active {
-                    theme::TEXT
-                } else {
-                    theme::TEXT_DIM
-                }),
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center),
-        )
-        .on_press(Message::SelectProfile(name.clone()))
-        .padding(Padding::new(9.0).horizontal(12.0))
-        .width(Length::Fill)
-        .style(theme::profile_entry(is_active));
-        profiles = profiles.push(entry);
-    }
-
-    let profile_list: Element<'_, Message> = if app.profiles.is_empty() {
-        text(t!("panel.no_profiles").to_string())
-            .size(12)
-            .color(theme::TEXT_DIM)
-            .into()
-    } else {
-        scrollable(profiles)
-            .height(Length::Fixed(260.0))
-            .width(Length::Fill)
-            .into()
-    };
-
-    panel = panel.push(
-        column![
-            text(t!("panel.profiles").to_string())
-                .size(15)
-                .font(semibold())
-                .color(theme::TEXT),
-            profile_list,
-            row![
-                text_input(t!("panel.new_profile").as_ref(), &app.new_profile)
-                    .on_input(Message::NewProfileName)
-                    .on_submit(Message::CreateProfile)
-                    .size(13)
-                    .style(theme::input)
-                    .width(Length::Fill),
-                button(
-                    text(t!("panel.create").to_string())
-                        .size(12)
-                        .color(Color::BLACK)
-                )
-                .on_press(Message::CreateProfile)
-                .style(theme::primary)
-                .padding(Padding::new(9.0).horizontal(14.0)),
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center),
-        ]
-        .spacing(8),
-    );
-
-    panel = panel.push(
-        column![
-            text(t!("panel.maintenance").to_string())
-                .size(15)
-                .font(semibold())
-                .color(theme::TEXT),
-            button(
-                text(t!("panel.recalibrate").to_string())
-                    .size(12)
-                    .color(theme::TEXT),
-            )
-            .on_press(Message::StartCalibration)
-            .style(theme::secondary)
-            .padding(Padding::new(8.0).horizontal(14.0)),
-        ]
-        .spacing(8),
-    );
-
-    if let Some(error) = status.error.as_deref() {
-        panel = panel.push(
-            container(
-                column![
-                    text(t!("panel.daemon_error").to_string())
-                        .size(11)
-                        .color(theme::DANGER),
-                    text(error).size(11).color(theme::TEXT_DIM),
-                ]
-                .spacing(4),
-            )
-            .style(theme::error_toast)
-            .padding(10.0),
-        );
-    }
-
-    container(panel).style(theme::card).padding(20.0).into()
-}
-
 fn settings_card<'a>(
     title: String,
     content: impl Into<iced::widget::Column<'a, Message>>,
@@ -702,9 +843,20 @@ fn settings_card<'a>(
         .spacing(10),
     )
     .style(theme::card)
-    .padding(20.0)
+    .padding(Padding::new(20.0).right(34.0))
     .width(Length::Fill)
     .into()
+}
+
+fn settings_card_with_title<'a>(
+    title: Element<'a, Message>,
+    content: impl Into<iced::widget::Column<'a, Message>>,
+) -> Element<'a, Message> {
+    container(column![title, content.into()].spacing(10))
+        .style(theme::card)
+        .padding(Padding::new(20.0).right(34.0))
+        .width(Length::Fill)
+        .into()
 }
 
 fn diag_row(label: String, value: String, danger: bool) -> Element<'static, Message> {
@@ -775,7 +927,13 @@ fn settings_page(app: &App) -> Element<'_, Message> {
         .and_then(|status| status.profile.clone())
         .unwrap_or_else(|| t!("settings.none").to_string());
     let (error, has_error) = match status.and_then(|status| status.error.clone()) {
-        Some(error) => (error, true),
+        Some(error) => {
+            let at = status
+                .and_then(|status| status.error_at.clone())
+                .map(|at| format!("{at} · {error}"))
+                .unwrap_or(error);
+            (at, true)
+        }
         None => (t!("settings.no_error").to_string(), false),
     };
 
@@ -794,6 +952,14 @@ fn settings_page(app: &App) -> Element<'_, Message> {
         ),
         diag_row(t!("settings.active_profile").to_string(), profile, false),
         diag_row(t!("settings.last_error").to_string(), error, has_error),
+        button(
+            text(t!("settings.recalibrate").to_string())
+                .size(12)
+                .color(theme::TEXT),
+        )
+        .on_press(Message::StartCalibration)
+        .style(theme::secondary)
+        .padding(Padding::new(8.0).horizontal(14.0)),
     ]
     .spacing(8);
     page = page.push(settings_card(
@@ -816,30 +982,19 @@ fn settings_page(app: &App) -> Element<'_, Message> {
         text(t!("settings.tagline").to_string())
             .size(12)
             .color(theme::TEXT_DIM),
+        button(
+            text(settings::PROJECT_URL.to_owned())
+                .size(12)
+                .font(semibold()),
+        )
+        .on_press(Message::OpenProjectUrl)
+        .style(theme::link_button)
+        .padding(Padding::new(2.0).horizontal(4.0)),
         diag_row(
             t!("settings.license_label").to_string(),
             "GPL-3.0".to_owned(),
             false,
         ),
-        row![
-            text(t!("settings.project_label").to_string())
-                .size(12)
-                .color(theme::TEXT_DIM)
-                .width(Length::Fixed(140.0)),
-            text(settings::PROJECT_URL.to_owned())
-                .size(12)
-                .color(theme::TEXT),
-            button(
-                text(t!("settings.copy").to_string())
-                    .size(11)
-                    .color(theme::TEXT)
-            )
-            .on_press(Message::CopyProjectUrl)
-            .style(theme::secondary)
-            .padding(Padding::new(5.0).horizontal(10.0)),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center),
         diag_row(
             t!("settings.icons_label").to_string(),
             "Material Design Icons (Apache-2.0)".to_owned(),
@@ -855,6 +1010,56 @@ fn settings_page(app: &App) -> Element<'_, Message> {
             .color(theme::TEXT_DIM),
     ]
     .spacing(8);
+
+    // Shortcuts section: one trinity-ctl command per profile
+    let mut shortcuts = column![].spacing(8);
+    for name in &app.profiles {
+        let command = format!("trinity-ctl profile {name}");
+        shortcuts = shortcuts.push(
+            row![
+                text(name.clone())
+                    .size(12)
+                    .color(theme::TEXT_DIM)
+                    .width(Length::Fixed(100.0)),
+                text(command.clone())
+                    .size(12)
+                    .font(iced::Font::MONOSPACE)
+                    .color(theme::TEXT)
+                    .width(Length::Fill),
+                button(icons::copy_icon(theme::TEXT_DIM, 13.0))
+                    .on_press(Message::CopyShortcut(command))
+                    .style(theme::copy_button)
+                    .padding(5.0),
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center),
+        );
+    }
+    let shortcuts_title = row![
+        text(t!("settings.shortcuts").to_string())
+            .size(15)
+            .font(semibold())
+            .color(theme::TEXT),
+        iced::widget::tooltip(
+            text("?").size(12).color(theme::TEXT_DIM),
+            container(
+                text(t!("settings.cli_tooltip").to_string())
+                    .size(11)
+                    .color(theme::TEXT)
+            )
+            .style(theme::card)
+            .padding(10.0),
+            iced::widget::tooltip::Position::Bottom,
+        )
+        .gap(6.0),
+    ]
+    .spacing(6)
+    .align_y(Alignment::Center)
+    .into();
+
+    page = page.push(settings_card_with_title(shortcuts_title, shortcuts));
+
+    // About last
     page = page.push(settings_card(t!("settings.about").to_string(), about));
 
     page.into()

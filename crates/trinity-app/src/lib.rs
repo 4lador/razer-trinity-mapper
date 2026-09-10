@@ -6,6 +6,7 @@ pub mod ports;
 pub mod session;
 pub mod testing;
 pub mod translator;
+pub mod use_cases;
 
 #[cfg(test)]
 mod testkit;
