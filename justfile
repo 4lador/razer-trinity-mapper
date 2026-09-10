@@ -51,7 +51,7 @@ install-user:
 
 # Run the engine (before the GUI)
 run-daemon:
-	cargo run -p trinity-daemon
+	cargo run -p trinity-daemon --bin trinity-daemon
 
 # Run the GUI
 run-gui:
