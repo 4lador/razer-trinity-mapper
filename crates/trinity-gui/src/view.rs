@@ -927,7 +927,13 @@ fn settings_page(app: &App) -> Element<'_, Message> {
         .and_then(|status| status.profile.clone())
         .unwrap_or_else(|| t!("settings.none").to_string());
     let (error, has_error) = match status.and_then(|status| status.error.clone()) {
-        Some(error) => (error, true),
+        Some(error) => {
+            let at = status
+                .and_then(|status| status.error_at.clone())
+                .map(|at| format!("{at} · {error}"))
+                .unwrap_or(error);
+            (at, true)
+        }
         None => (t!("settings.no_error").to_string(), false),
     };
 

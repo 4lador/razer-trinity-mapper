@@ -343,6 +343,7 @@ fn every_response_variant_roundtrips_through_json() {
         captured_count: 2,
         total_buttons: 12,
         error: None,
+        error_at: None,
     };
 
     let cases = vec![

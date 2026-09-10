@@ -44,6 +44,8 @@ pub struct Status {
     pub captured_count: usize,
     pub total_buttons: usize,
     pub error: Option<String>,
+    /// When the error occurred, pre-formatted as `YYYY-MM-DD HH:MM:SS`.
+    pub error_at: Option<String>,
 }
 
 /// IPC-serializable profile (domain types do not depend on serde).
@@ -141,6 +143,7 @@ mod tests {
             captured_count: 2,
             total_buttons: 12,
             error: None,
+            error_at: None,
         };
         let response = Response::Status(status);
         let json = encode_response(&response);
