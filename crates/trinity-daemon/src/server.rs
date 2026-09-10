@@ -231,6 +231,7 @@ impl Server {
             Request::GetStatus => return self.build_status(),
             Request::SetEnabled { enabled } => self.set_enabled(enabled),
             Request::SetProfile { name } => self.set_profile(&name),
+            Request::DeleteProfile { name } => self.delete_profile(&name),
             Request::ListProfiles => {
                 let profiles = TomlProfileRepository::new(&self.config.profiles_dir);
                 return match profiles.list() {
@@ -299,6 +300,23 @@ impl Server {
         let mut state = self.lock_state();
         state.engine.set_profile(profile)?;
         state.profile_name = Some(name.to_owned());
+        Ok(())
+    }
+
+    fn delete_profile(&self, name: &str) -> Result<(), AppError> {
+        if name == self.config.default_profile {
+            return Err(AppError::Port("cannot delete the default profile".into()));
+        }
+        TomlProfileRepository::new(&self.config.profiles_dir).delete(name)?;
+        let mut state = self.lock_state();
+        if state.profile_name.as_deref() == Some(name) {
+            if let Ok(default) = TomlProfileRepository::new(&self.config.profiles_dir)
+                .load(&self.config.default_profile)
+            {
+                state.engine.set_profile(default)?;
+                state.profile_name = Some(self.config.default_profile.clone());
+            }
+        }
         Ok(())
     }
 

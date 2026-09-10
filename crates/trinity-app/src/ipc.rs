@@ -12,6 +12,7 @@ pub enum Request {
     GetProfile { name: String },
     SaveProfile { profile: ProfileDto },
     SetProfile { name: String },
+    DeleteProfile { name: String },
     BeginCalibration,
     CancelCalibration,
     FinishCalibration,

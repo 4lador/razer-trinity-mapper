@@ -34,7 +34,12 @@ pub fn render(app: &App) -> Element<'_, Message> {
     };
 
     let mut content = column![].spacing(14);
-    content = content.push(scrollable(body).width(Length::Fill).height(Length::Fill));
+    content = content.push(
+        scrollable(body)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(theme::minimal_scrollbar),
+    );
     if app.route == Route::Main {
         content = content.push(footer());
     }
@@ -57,6 +62,9 @@ pub fn render(app: &App) -> Element<'_, Message> {
     if let Some(notice) = app.notice.as_ref() {
         layered = layered.push(error_toast_layer(&notice.text));
     }
+    if let Some(profile_name) = app.confirm_delete.as_ref() {
+        layered = layered.push(delete_confirmation(profile_name));
+    }
     container(layered)
         .style(theme::app_background_for(app.csd, app.maximized))
         .width(Length::Fill)
@@ -66,6 +74,51 @@ pub fn render(app: &App) -> Element<'_, Message> {
 
 /// Floating error toast: anchored bottom-right, overlaid on the
 /// content, does not intercept clicks (non-interactive container).
+/// Delete-confirmation popup: dark overlay + centered card.
+fn delete_confirmation(profile_name: &str) -> Element<'_, Message> {
+    container(
+        container(
+            column![
+                text(t!("panel.confirm_delete_title").to_string())
+                    .size(17)
+                    .font(semibold())
+                    .color(theme::TEXT),
+                text(t!("panel.confirm_delete_body", name = profile_name.to_string()).to_string(),)
+                    .size(13)
+                    .color(theme::TEXT_DIM),
+                row![
+                    button(
+                        text(t!("calibration.cancel").to_string())
+                            .size(13)
+                            .color(theme::TEXT),
+                    )
+                    .on_press(Message::CancelDeleteProfile)
+                    .style(theme::secondary)
+                    .padding(Padding::new(8.0).horizontal(16.0)),
+                    button(
+                        text(t!("panel.delete").to_string())
+                            .size(13)
+                            .color(theme::DANGER),
+                    )
+                    .on_press(Message::ConfirmDeleteProfile)
+                    .style(theme::danger)
+                    .padding(Padding::new(8.0).horizontal(16.0)),
+                ]
+                .spacing(10),
+            ]
+            .spacing(14)
+            .align_x(Alignment::Center),
+        )
+        .style(theme::card)
+        .padding(Padding::new(24.0).horizontal(36.0)),
+    )
+    .style(theme::overlay)
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .center(Length::Fill)
+    .into()
+}
+
 fn error_toast_layer(message: &str) -> Element<'_, Message> {
     container(
         container(
@@ -587,7 +640,10 @@ fn side_panel<'a>(app: &'a App, status: &'a Status, window_width: f32) -> Elemen
     let mut profiles = column![].spacing(6);
     for name in &app.profiles {
         let is_active = active.as_deref() == Some(name.as_str());
-        let entry = button(
+        let is_default = name == "default";
+        let is_hovered = app.hovered_profile.as_deref() == Some(name.as_str());
+
+        let select_button = button(
             row![
                 text(if is_active { "●" } else { "○" })
                     .size(11)
@@ -609,7 +665,31 @@ fn side_panel<'a>(app: &'a App, status: &'a Status, window_width: f32) -> Elemen
         .padding(Padding::new(9.0).horizontal(12.0))
         .width(Length::Fill)
         .style(theme::profile_entry(is_active));
-        profiles = profiles.push(entry);
+
+        let trash_slot: Element<'_, Message> = if is_hovered && !is_default {
+            button(icons::trash_icon(theme::DANGER, 13.0))
+                .on_press(Message::RequestDeleteProfile(name.clone()))
+                .style(theme::delete_button)
+                .padding(5.0)
+                .into()
+        } else {
+            container(iced::widget::Space::new().width(Length::Fixed(23.0)))
+                .padding(Padding::new(5.0))
+                .into()
+        };
+
+        let bubble = mouse_area(
+            container(
+                row![select_button, trash_slot]
+                    .spacing(2)
+                    .align_y(Alignment::Center),
+            )
+            .width(Length::Fill),
+        )
+        .on_enter(Message::ProfileHover(Some(name.clone())))
+        .on_exit(Message::ProfileHover(None));
+
+        profiles = profiles.push(bubble);
     }
 
     let profile_list: Element<'_, Message> = if app.profiles.is_empty() {
@@ -619,8 +699,9 @@ fn side_panel<'a>(app: &'a App, status: &'a Status, window_width: f32) -> Elemen
             .into()
     } else {
         scrollable(profiles)
-            .height(Length::Fixed(260.0))
+            .height(Length::Fixed(300.0))
             .width(Length::Fill)
+            .style(theme::minimal_scrollbar)
             .into()
     };
 
@@ -856,6 +937,35 @@ fn settings_page(app: &App) -> Element<'_, Message> {
     ]
     .spacing(8);
     page = page.push(settings_card(t!("settings.about").to_string(), about));
+
+    // Shortcuts section: one trinity-ctl command per profile
+    let mut shortcuts = column![].spacing(8);
+    for name in &app.profiles {
+        let command = format!("trinity-ctl profile {name}");
+        shortcuts = shortcuts.push(
+            row![
+                text(name.clone())
+                    .size(12)
+                    .color(theme::TEXT_DIM)
+                    .width(Length::Fixed(100.0)),
+                text(command.clone())
+                    .size(12)
+                    .font(iced::Font::MONOSPACE)
+                    .color(theme::TEXT)
+                    .width(Length::Fill),
+                button(icons::copy_icon(theme::TEXT_DIM, 13.0))
+                    .on_press(Message::CopyShortcut(command))
+                    .style(theme::copy_button)
+                    .padding(5.0),
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center),
+        );
+    }
+    page = page.push(settings_card(
+        t!("settings.shortcuts").to_string(),
+        shortcuts,
+    ));
 
     page.into()
 }
