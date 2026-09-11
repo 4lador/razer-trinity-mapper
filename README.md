@@ -49,15 +49,18 @@ remapping is transparent to Wayland, X11 and games.
 
 ## Installation
 
-### Quick install (recommended)
+### Universal installer (any distro)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/4lador/razer-trinity-mapper/main/install.sh | bash
 ```
 
-Downloads prebuilt binaries and installs to `~/.local/bin` (add `--system`
-to install to `/usr/local/bin` instead). Then follow the
-[requirements](#requirements) steps below.
+Downloads prebuilt binaries from GitHub Releases over HTTPS and installs
+to `~/.local/bin` (add `--system` to install to `/usr/local/bin` instead).
+The archive checksum is verified when the release publishes one; releases
+are not GPG-signed. Prefer a package manager install below for tracked
+upgrades and clean removal. Then follow the [requirements](#requirements)
+steps.
 
 ### With udev rule + systemd service
 
@@ -67,6 +70,40 @@ curl -fsSL https://raw.githubusercontent.com/4lador/razer-trinity-mapper/main/in
 ```
 
 ### Other install methods
+
+<details>
+<summary>Fedora / openSUSE (OBS repository — from v0.3.0)</summary>
+
+Fedora (adjust the version in the URL):
+
+```bash
+sudo dnf config-manager addrepo --from-repofile=\
+https://download.opensuse.org/repositories/home:/4lador:/razer-trinity-mapper/Fedora_44/home:4lador:razer-trinity-mapper.repo
+sudo dnf install razer-trinity-mapper
+```
+
+openSUSE Tumbleweed:
+
+```bash
+sudo zypper ar -f https://download.opensuse.org/repositories/home:/4lador:/razer-trinity-mapper/openSUSE_Tumbleweed/home:4lador:razer-trinity-mapper.repo
+sudo zypper refresh && sudo zypper install razer-trinity-mapper
+```
+
+The udev rule and systemd user service are installed by the package.
+
+</details>
+
+<details>
+<summary>Debian / Ubuntu (.deb)</summary>
+
+Grab the `.deb` from the [releases page](https://github.com/4lador/razer-trinity-mapper/releases)
+(built on Ubuntu 22.04, works on Debian 12+ and Ubuntu 22.04+), then:
+
+```bash
+sudo apt install ./razer-trinity-mapper_*_amd64.deb
+```
+
+</details>
 
 <details>
 <summary>cargo install (Rust users)</summary>
@@ -222,6 +259,17 @@ From a clone:
 ### Via pacman (AUR, when available)
 ```bash
 sudo pacman -R razer-trinity-mapper
+```
+
+### Via dnf / zypper (OBS package)
+```bash
+sudo dnf remove razer-trinity-mapper      # Fedora
+sudo zypper remove razer-trinity-mapper   # openSUSE
+```
+
+### Via apt (.deb)
+```bash
+sudo apt remove razer-trinity-mapper
 ```
 
 User config (`~/.config/razer-trinity-mapper/`) is never removed by

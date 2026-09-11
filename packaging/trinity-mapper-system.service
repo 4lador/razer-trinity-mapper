@@ -1,0 +1,11 @@
+[Unit]
+Description=Razer Trinity Mapper — button remapping engine
+Documentation=https://github.com/4lador/razer-trinity-mapper
+
+[Service]
+ExecStart=/usr/bin/trinity-daemon
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

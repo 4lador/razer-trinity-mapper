@@ -54,7 +54,22 @@ jobs:
           cp packaging/60-trinity-mapper.rules dist/
           cp packaging/trinity-mapper.service dist/
           tar -czf "razer-trinity-mapper-${{ github.ref_name }}-x86_64.tar.gz" -C dist .
+          sha256sum "razer-trinity-mapper-${{ github.ref_name }}-x86_64.tar.gz" \
+            > "razer-trinity-mapper-${{ github.ref_name }}-x86_64.tar.gz.sha256"
+      - name: Install cargo-deb
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deb
+      - name: Build .deb
+        run: |
+          cargo deb -p trinity-daemon
+          cp target/debian/razer-trinity-mapper_*.deb .
+          for f in razer-trinity-mapper_*.deb; do sha256sum "$f" > "$f.sha256"; done
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: razer-trinity-mapper-*.tar.gz
+          files: |
+            razer-trinity-mapper-*.tar.gz
+            razer-trinity-mapper-*.tar.gz.sha256
+            razer-trinity-mapper_*.deb
+            razer-trinity-mapper_*.deb.sha256
