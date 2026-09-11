@@ -149,19 +149,32 @@ if [ -z "$TAG" ]; then
 fi
 echo "Latest release: v$TAG"
 
-URL="https://github.com/$REPO/releases/download/v$TAG/razer-trinity-mapper-v$TAG-$ARCH.tar.gz"
+TARBALL="razer-trinity-mapper-v$TAG-$ARCH.tar.gz"
+URL="https://github.com/$REPO/releases/download/v$TAG/$TARBALL"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
 echo "Downloading $URL..."
-curl -sL -o "$TMPDIR/release.tar.gz" "$URL"
-if [ ! -s "$TMPDIR/release.tar.gz" ]; then
-    echo "error: download failed or file is empty"
+if ! curl -sSLf -o "$TMPDIR/$TARBALL" "$URL"; then
+    echo "error: download failed"
     echo "hint: prebuilt binaries may not be available yet for $ARCH"
     exit 1
 fi
 
-tar -xzf "$TMPDIR/release.tar.gz" -C "$TMPDIR"
+# Verify integrity when the release publishes a checksum
+if curl -sSLf -o "$TMPDIR/$TARBALL.sha256" "$URL.sha256" 2>/dev/null; then
+    echo "Verifying checksum..."
+    if (cd "$TMPDIR" && sha256sum -c "$TARBALL.sha256" --status); then
+        echo "Checksum OK."
+    else
+        echo "error: checksum mismatch - the downloaded file is corrupted"
+        exit 1
+    fi
+else
+    echo "warning: no checksum published for this release, skipping verification"
+fi
+
+tar -xzf "$TMPDIR/$TARBALL" -C "$TMPDIR"
 
 # Install binaries
 mkdir -p "$PREFIX"
