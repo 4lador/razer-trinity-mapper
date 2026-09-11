@@ -44,7 +44,8 @@ remapping is transparent to Wayland, X11 and games.
   your `A` is the real `A`.
 - **6 languages**: English, French, German, Spanish, Italian,
   Portuguese (Brazil).
-- Clean dark theme with client-side decorations under Wayland.
+- Clean dark theme with client-side decorations under Wayland (system
+  decorations on X11).
 
 ## Installation
 
@@ -54,8 +55,9 @@ remapping is transparent to Wayland, X11 and games.
 curl -fsSL https://raw.githubusercontent.com/4lador/razer-trinity-mapper/main/install.sh | bash
 ```
 
-Downloads prebuilt binaries and installs to `~/.local/bin`. Then follow
-the [requirements](#requirements) steps below.
+Downloads prebuilt binaries and installs to `~/.local/bin` (add `--system`
+to install to `/usr/local/bin` instead). Then follow the
+[requirements](#requirements) steps below.
 
 ### With udev rule + systemd service
 
@@ -100,9 +102,16 @@ install -Dm755 target/release/trinity-ctl ~/.local/bin/trinity-ctl
 yay -S razer-trinity-mapper
 ```
 
+Arch users should prefer this package once available (tracked by pacman,
+clean upgrades and removal).
+
 </details>
 
 ### Requirements
+
+- Linux with glibc ≥ 2.34 (Ubuntu 22.04+, Debian 12+, Fedora 38+, Arch,
+  openSUSE) for the prebuilt binaries.
+- `bash`, `curl` and `tar` for the install script.
 
 After installing the binaries, set up the kernel module and permissions:
 
@@ -179,15 +188,6 @@ recalibration from Settings → Diagnostics.
 
 </details>
 
-<details>
-<summary>Wayland vs X11</summary>
-
-Both are supported. On Wayland, the app uses client-side decorations
-(transparent corners, integrated title bar). On X11, it falls back to
-system decorations for compatibility.
-
-</details>
-
 ## Usage
 
 1. Start the engine: `trinity-daemon` (or the systemd unit above).
@@ -204,6 +204,16 @@ profile + `calibration.toml`).
 ## Uninstall
 
 ### Via install.sh
+
+Installed with the one-liner (no cloned repo)?
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/4lador/razer-trinity-mapper/main/install.sh \
+  | bash -s -- --uninstall          # remove binaries only
+```
+
+From a clone:
+
 ```bash
 ./install.sh --uninstall          # remove binaries only
 ./install.sh --uninstall --all    # remove everything (udev, systemd, config)
