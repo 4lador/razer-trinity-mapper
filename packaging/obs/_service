@@ -2,7 +2,7 @@
   <service name="obs_scm">
     <param name="url">https://github.com/4lador/razer-trinity-mapper.git</param>
     <param name="scm">git</param>
-    <param name="revision">v0.2.2</param>
+    <param name="revision">dev</param>
     <param name="versionformat">0.2.2</param>
     <param name="filename">razer-trinity-mapper</param>
   </service>
